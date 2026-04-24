@@ -11,10 +11,10 @@ import pickle
 # =========================
 @st.cache_resource
 def load_models():
-    with open("models/cnn.pkl", "rb") as f:
+    with open("Models/cnn.pkl", "rb") as f:
         cnn = pickle.load(f)
 
-    with open("models/elm.pkl", "rb") as f:
+    with open("Models/elm.pkl", "rb") as f:
         elm = pickle.load(f)
 
     return cnn, elm
