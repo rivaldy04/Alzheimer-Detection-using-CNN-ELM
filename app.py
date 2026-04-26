@@ -1,32 +1,17 @@
 import streamlit as st
-
-st.set_page_config(page_title="Deteksi Alzheimer", layout="centered")
-
+import pickle
 import numpy as np
 import cv2
-import pickle
+from tensorflow.keras.models import load_model
 
-# =========================
-# Load model (cache biar cepat)
-# =========================
-@st.cache_resource
-def load_models():
-    with open("Models/cnn.pkl", "rb") as f:
-        cnn = pickle.load(f)
-
-    with open("Models/elm.pkl", "rb") as f:
-        elm = pickle.load(f)
-
-    return cnn, elm
-
-cnn_model, elm_model = load_models()
-
-# =========================
-# Import fungsi pipeline
-# =========================
+from src.elm.elm import ELM, elm_predict
 from src.preprocessing.image import preprocess
-from src.cnn.forward import forward_cnn
-from src.elm.elm import elm_predict
+from src.cnn.forward import extract_features
+
+st.set_page_config(
+    page_title="Deteksi Alzheimer",
+    layout="centered"
+)
 
 # =========================
 # Label Mapping
@@ -39,50 +24,91 @@ label_map = {
 }
 
 # =========================
+# Load Models
+# =========================
+@st.cache_resource
+def load_models():
+    cnn = load_model("Models/cnn_feature_extractor.keras")
+
+    with open("Models/elm_model.pkl", "rb") as f:
+        elm = pickle.load(f)
+
+    return cnn, elm
+
+
+cnn_model, elm_model = load_models()
+
+# =========================
 # UI
 # =========================
-
-
 st.title("🧠 Deteksi Alzheimer (CNN + ELM)")
-st.write("Upload citra MRI untuk klasifikasi tingkat Alzheimer")
+st.write("Upload citra MRI untuk klasifikasi tingkat Alzheimer.")
 
-uploaded_file = st.file_uploader("Upload gambar", type=["jpg", "png", "jpeg"])
+uploaded_file = st.file_uploader(
+    "Upload gambar MRI",
+    type=["jpg", "jpeg", "png"]
+)
 
 # =========================
-# Proses
+# Prediction
 # =========================
 if uploaded_file is not None:
 
-    # baca gambar
-    file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
-    image = cv2.imdecode(file_bytes, cv2.IMREAD_GRAYSCALE)
+    file_bytes = np.asarray(
+        bytearray(uploaded_file.read()),
+        dtype=np.uint8
+    )
 
-    st.image(image, caption="Gambar Input", use_column_width=True)
+    image = cv2.imdecode(
+        file_bytes,
+        cv2.IMREAD_GRAYSCALE
+    )
 
-    with st.spinner("Memproses..."):
+    st.image(
+        image,
+        caption="Gambar Input",
+        channels="GRAY",
+        use_container_width=True
+    )
 
-        # preprocessing
+    with st.spinner("Memproses gambar MRI..."):
+
+        # Preprocessing
         img = preprocess(image)
 
-        # CNN
-        fitur = forward_cnn(img, cnn_model)
+        # Feature Extraction
+        features = extract_features(
+            cnn_model,
+            img
+        )
 
-        # ELM
-        pred = elm_predict(fitur.reshape(1, -1), elm_model)
+        # ELM Prediction
+        pred_class, pred_prob = elm_predict(
+            features,
+            elm_model
+        )
 
-        # ambil kelas
-        kelas = np.argmax(pred)
-        confidence = np.max(pred)
+        # Ambil probabilitas tertinggi
+        confidence = np.max(pred_prob)
 
     # =========================
-    # Output
+    # Hasil
     # =========================
     st.subheader("Hasil Prediksi")
 
-    st.success(f"Kelas: {label_map[kelas]}")
-    st.info(f"Confidence: {confidence:.4f}")
+    st.success(
+        f"Diagnosis: {label_map[int(pred_class)]}"
+    )
 
-    # tampilkan semua probabilitas
-    st.subheader("Detail Skor")
-    for i, score in enumerate(pred[0]):
-        st.write(f"{label_map[i]}: {score:.4f}")
+    st.info(
+        f"Tingkat Keyakinan: {confidence:.2%}"
+    )
+
+    # =========================
+    # Probabilitas
+    # =========================
+    st.subheader("Probabilitas Tiap Kelas")
+
+    for i, prob in enumerate(pred_prob.flatten()):
+        st.write(f"{label_map[i]}: {prob:.2%}")
+        st.progress(float(prob))
