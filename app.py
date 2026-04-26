@@ -96,8 +96,10 @@ if uploaded_file is not None:
     # =========================
     st.subheader("Hasil Prediksi")
 
+    predicted_class = int(np.array(pred_class).flatten()[0])
+
     st.success(
-        f"Diagnosis: {label_map[int(pred_class)]}"
+        f"Diagnosis: {label_map[predicted_class]}"
     )
 
     st.info(
